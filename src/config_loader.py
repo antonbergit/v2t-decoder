@@ -20,6 +20,9 @@ class Config:
     device: str
     whisper_model: str
     language: str | None
+    initial_prompt: str | None
+    beam_size: int
+    vad_filter: bool
     audio_bitrate: str
     min_text_len: int
 
@@ -70,6 +73,10 @@ def load_config(config_path: Path) -> Config:
     whisper_model = str(data.get("whisper_model", "medium")).strip()
     language = data.get("language", None)
     language = None if language in (None, "", "auto") else str(language)
+    initial_prompt = data.get("initial_prompt", None)
+    initial_prompt = None if initial_prompt in (None, "") else str(initial_prompt)
+    beam_size = int(data.get("beam_size", 5))
+    vad_filter = bool(data.get("vad_filter", True))
 
     audio_bitrate = str(data.get("audio_bitrate", "128k")).strip()
     min_text_len = int(data.get("min_text_len", 2))
@@ -82,6 +89,8 @@ def load_config(config_path: Path) -> Config:
         raise ConfigError("'max_video_duration_sec' must be > 0")
     if min_text_len < 1:
         raise ConfigError("'min_text_len' must be >= 1")
+    if beam_size < 1:
+        raise ConfigError("'beam_size' must be >= 1")
 
     return Config(
         video_file=video_file,
@@ -93,6 +102,9 @@ def load_config(config_path: Path) -> Config:
         device=device,
         whisper_model=whisper_model,
         language=language,
+        initial_prompt=initial_prompt,
+        beam_size=beam_size,
+        vad_filter=vad_filter,
         audio_bitrate=audio_bitrate,
         min_text_len=min_text_len,
     )

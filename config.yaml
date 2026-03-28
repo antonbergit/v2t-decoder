@@ -9,7 +9,10 @@ max_video_duration_sec: 7200
 
 whisper_model: medium
 device: auto
-language: auto
+language: ru
+initial_prompt: "Russian and Ukrainian speech. Do not translate. Transcribe verbatim."
+beam_size: 5
+vad_filter: true
 
 audio_bitrate: 128k
 min_text_len: 2

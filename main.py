@@ -93,6 +93,9 @@ def main() -> int:
                 "audio_stream_count": len(audio_streams),
                 "whisper_model": config.whisper_model,
                 "device": config.device,
+                "language": config.language,
+                "beam_size": config.beam_size,
+                "vad_filter": config.vad_filter,
             }
         )
         logger.log_stage(
@@ -167,8 +170,13 @@ def main() -> int:
         s1_segments, s1_lang = whisper.transcribe(
             s1_file,
             language=config.language,
+            initial_prompt=config.initial_prompt,
             min_text_len=config.min_text_len,
+            beam_size=config.beam_size,
+            vad_filter=config.vad_filter,
         )
+        if s1_lang and s1_lang not in {"ru", "uk"}:
+            logger.add_warning(f"S1 detected language is '{s1_lang}', expected ru/uk.")
         logger.log_stage(
             "transcribe_s1",
             "completed",
@@ -185,8 +193,13 @@ def main() -> int:
             s2_segments, s2_lang = whisper.transcribe(
                 s2_file,
                 language=config.language,
+                initial_prompt=config.initial_prompt,
                 min_text_len=config.min_text_len,
+                beam_size=config.beam_size,
+                vad_filter=config.vad_filter,
             )
+            if s2_lang and s2_lang not in {"ru", "uk"}:
+                logger.add_warning(f"S2 detected language is '{s2_lang}', expected ru/uk.")
             logger.log_stage(
                 "transcribe_s2",
                 "completed",
@@ -196,6 +209,12 @@ def main() -> int:
                     "detected_language": s2_lang,
                 },
             )
+            if len(s2_segments) == 0:
+                logger.add_warning("S2 produced zero segments.")
+            elif len(s1_segments) > 0 and len(s2_segments) / len(s1_segments) < 0.2:
+                logger.add_warning(
+                    "S2 segment count is much lower than S1; check channel mapping or audio balance."
+                )
 
         dialog = dialog_builder.merge(s1_segments, s2_segments, global_offset_sec=0.0)
         logger.log_stage("merge_dialog", "completed", details={"lines": len(dialog)})

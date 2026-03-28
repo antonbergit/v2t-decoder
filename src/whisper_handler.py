@@ -29,14 +29,18 @@ class WhisperHandler:
         audio_file: Path,
         *,
         language: str | None = None,
+        initial_prompt: str | None = None,
         min_text_len: int = 2,
         beam_size: int = 5,
+        vad_filter: bool = True,
     ) -> tuple[list[TranscriptSegment], str | None]:
         try:
             segments_iter, info = self.model.transcribe(
                 str(audio_file),
                 language=language,
+                initial_prompt=initial_prompt,
                 beam_size=beam_size,
+                vad_filter=vad_filter,
             )
             segments: list[TranscriptSegment] = []
             for seg in segments_iter:
