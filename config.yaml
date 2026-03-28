@@ -1,0 +1,15 @@
+video_file: ./test-example/2025-12-20_17-59-46.mkv
+output_dir: ./output
+mode: demo
+
+# Hardcoded MVP defaults (can be overridden here)
+demo_duration_sec: 60
+fragment_size_min: 10
+max_video_duration_sec: 7200
+
+whisper_model: medium
+device: auto
+language: auto
+
+audio_bitrate: 128k
+min_text_len: 2

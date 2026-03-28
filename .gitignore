@@ -4,6 +4,12 @@ __pycache__/
 *.pyc
 .env
 models/
+output/
+output_*/
+extracted_audio/
+*.log
+processing.log.json
+config.smoke.yaml
 *.mkv
 *.mp3
 *.mp4
