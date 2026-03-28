@@ -23,6 +23,11 @@ class Config:
     initial_prompt: str | None
     beam_size: int
     vad_filter: bool
+    preferred_stream_index: int
+    s1_channel: str
+    s2_channel: str
+    enable_channel_prescan: bool
+    prescan_duration_sec: int
     audio_bitrate: str
     min_text_len: int
 
@@ -78,6 +83,12 @@ def load_config(config_path: Path) -> Config:
     beam_size = int(data.get("beam_size", 5))
     vad_filter = bool(data.get("vad_filter", True))
 
+    preferred_stream_index = int(data.get("preferred_stream_index", 1))
+    s1_channel = str(data.get("s1_channel", "FL")).strip().upper()
+    s2_channel = str(data.get("s2_channel", "FR")).strip().upper()
+    enable_channel_prescan = bool(data.get("enable_channel_prescan", False))
+    prescan_duration_sec = int(data.get("prescan_duration_sec", 8))
+
     audio_bitrate = str(data.get("audio_bitrate", "128k")).strip()
     min_text_len = int(data.get("min_text_len", 2))
 
@@ -91,6 +102,14 @@ def load_config(config_path: Path) -> Config:
         raise ConfigError("'min_text_len' must be >= 1")
     if beam_size < 1:
         raise ConfigError("'beam_size' must be >= 1")
+    if preferred_stream_index < 0:
+        raise ConfigError("'preferred_stream_index' must be >= 0")
+    if s1_channel not in {"FL", "FR"}:
+        raise ConfigError("'s1_channel' must be FL or FR")
+    if s2_channel not in {"FL", "FR"}:
+        raise ConfigError("'s2_channel' must be FL or FR")
+    if prescan_duration_sec <= 0:
+        raise ConfigError("'prescan_duration_sec' must be > 0")
 
     return Config(
         video_file=video_file,
@@ -105,6 +124,11 @@ def load_config(config_path: Path) -> Config:
         initial_prompt=initial_prompt,
         beam_size=beam_size,
         vad_filter=vad_filter,
+        preferred_stream_index=preferred_stream_index,
+        s1_channel=s1_channel,
+        s2_channel=s2_channel,
+        enable_channel_prescan=enable_channel_prescan,
+        prescan_duration_sec=prescan_duration_sec,
         audio_bitrate=audio_bitrate,
         min_text_len=min_text_len,
     )

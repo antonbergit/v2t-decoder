@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -96,6 +95,11 @@ def main() -> int:
                 "language": config.language,
                 "beam_size": config.beam_size,
                 "vad_filter": config.vad_filter,
+                "preferred_stream_index": config.preferred_stream_index,
+                "s1_channel": config.s1_channel,
+                "s2_channel": config.s2_channel,
+                "enable_channel_prescan": config.enable_channel_prescan,
+                "prescan_duration_sec": config.prescan_duration_sec,
             }
         )
         logger.log_stage(
@@ -109,101 +113,217 @@ def main() -> int:
 
         audio_dir = output_dir / "extracted_audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
-
-        stream_index = int(audio_streams[0]["index"])
-        channels = int(audio_streams[0].get("channels") or 1)
-
-        s1_file = audio_dir / f"{config.video_file.stem}_S1_FL.mp3"
-        s2_file = audio_dir / f"{config.video_file.stem}_S2_FR.mp3"
-
-        t0 = time.perf_counter()
-        if channels <= 1:
-            ffmpeg.extract_mono(
-                video_file=config.video_file,
-                stream_index=stream_index,
-                output_mp3=s1_file,
-                bitrate=config.audio_bitrate,
-                start_sec=0.0,
-                duration_sec=process_duration_sec,
+        def _pick_stream_by_index(index: int) -> dict:
+            for s in audio_streams:
+                if int(s.get("index", -1)) == index:
+                    return s
+            logger.add_warning(
+                f"Preferred stream index {index} not found. Fallback to stream {audio_streams[0].get('index')}."
             )
-            logger.add_warning("Mono audio detected: processing as single speaker S1.")
-            s2_enabled = False
-        else:
-            ffmpeg.extract_channel(
-                video_file=config.video_file,
-                stream_index=stream_index,
-                channel="FL",
-                output_mp3=s1_file,
-                bitrate=config.audio_bitrate,
-                start_sec=0.0,
-                duration_sec=process_duration_sec,
-            )
-            ffmpeg.extract_channel(
-                video_file=config.video_file,
-                stream_index=stream_index,
-                channel="FR",
-                output_mp3=s2_file,
-                bitrate=config.audio_bitrate,
-                start_sec=0.0,
-                duration_sec=process_duration_sec,
-            )
-            s2_enabled = True
+            return audio_streams[0]
 
-            if channels > 2:
-                logger.add_warning(
-                    "Multi-channel audio detected: using fixed FL/FR channels from first audio stream."
+        def _transcribe_from_mapping(
+            *,
+            stream: dict,
+            s1_channel: str,
+            s2_channel: str,
+            duration_sec: float,
+            suffix: str,
+        ) -> dict:
+            local_stream_index = int(stream["index"])
+            local_channels = int(stream.get("channels") or 1)
+
+            local_s1_file = audio_dir / f"{config.video_file.stem}_S1_{s1_channel}{suffix}.mp3"
+            local_s2_file = audio_dir / f"{config.video_file.stem}_S2_{s2_channel}{suffix}.mp3"
+
+            t_extract = time.perf_counter()
+            if local_channels <= 1:
+                ffmpeg.extract_mono(
+                    video_file=config.video_file,
+                    stream_index=local_stream_index,
+                    output_mp3=local_s1_file,
+                    bitrate=config.audio_bitrate,
+                    start_sec=0.0,
+                    duration_sec=duration_sec,
                 )
+                local_s2_enabled = False
+            else:
+                ffmpeg.extract_channel(
+                    video_file=config.video_file,
+                    stream_index=local_stream_index,
+                    channel=s1_channel,
+                    output_mp3=local_s1_file,
+                    bitrate=config.audio_bitrate,
+                    start_sec=0.0,
+                    duration_sec=duration_sec,
+                )
+                ffmpeg.extract_channel(
+                    video_file=config.video_file,
+                    stream_index=local_stream_index,
+                    channel=s2_channel,
+                    output_mp3=local_s2_file,
+                    bitrate=config.audio_bitrate,
+                    start_sec=0.0,
+                    duration_sec=duration_sec,
+                )
+                local_s2_enabled = True
+            extract_duration = time.perf_counter() - t_extract
 
-        logger.log_stage(
-            "extract_audio",
-            "completed",
-            duration_sec=time.perf_counter() - t0,
-            details={
-                "stream_index": stream_index,
-                "channels": channels,
-                "s1_file": str(s1_file),
-                "s2_file": str(s2_file) if s2_enabled else None,
-            },
-        )
-
-        t1 = time.perf_counter()
-        s1_segments, s1_lang = whisper.transcribe(
-            s1_file,
-            language=config.language,
-            initial_prompt=config.initial_prompt,
-            min_text_len=config.min_text_len,
-            beam_size=config.beam_size,
-            vad_filter=config.vad_filter,
-        )
-        if s1_lang and s1_lang not in {"ru", "uk"}:
-            logger.add_warning(f"S1 detected language is '{s1_lang}', expected ru/uk.")
-        logger.log_stage(
-            "transcribe_s1",
-            "completed",
-            duration_sec=time.perf_counter() - t1,
-            details={
-                "segments": len(s1_segments),
-                "detected_language": s1_lang,
-            },
-        )
-
-        s2_segments = []
-        if s2_enabled:
-            t2 = time.perf_counter()
-            s2_segments, s2_lang = whisper.transcribe(
-                s2_file,
+            t_s1 = time.perf_counter()
+            local_s1_segments, local_s1_lang = whisper.transcribe(
+                local_s1_file,
                 language=config.language,
                 initial_prompt=config.initial_prompt,
                 min_text_len=config.min_text_len,
                 beam_size=config.beam_size,
                 vad_filter=config.vad_filter,
             )
+            transcribe_s1_duration = time.perf_counter() - t_s1
+
+            local_s2_segments = []
+            local_s2_lang = None
+            transcribe_s2_duration = 0.0
+            if local_s2_enabled:
+                t_s2 = time.perf_counter()
+                local_s2_segments, local_s2_lang = whisper.transcribe(
+                    local_s2_file,
+                    language=config.language,
+                    initial_prompt=config.initial_prompt,
+                    min_text_len=config.min_text_len,
+                    beam_size=config.beam_size,
+                    vad_filter=config.vad_filter,
+                )
+                transcribe_s2_duration = time.perf_counter() - t_s2
+
+            language_hits = 0
+            if local_s1_lang in {"ru", "uk"}:
+                language_hits += 1
+            if not local_s2_enabled:
+                language_hits += 1
+            elif local_s2_lang in {"ru", "uk"}:
+                language_hits += 1
+
+            return {
+                "stream_index": local_stream_index,
+                "channels": local_channels,
+                "mapping": f"S1={s1_channel},S2={s2_channel}",
+                "s1_file": local_s1_file,
+                "s2_file": local_s2_file,
+                "s2_enabled": local_s2_enabled,
+                "s1_segments": local_s1_segments,
+                "s2_segments": local_s2_segments,
+                "s1_lang": local_s1_lang,
+                "s2_lang": local_s2_lang,
+                "extract_duration": extract_duration,
+                "transcribe_s1_duration": transcribe_s1_duration,
+                "transcribe_s2_duration": transcribe_s2_duration,
+                "total_segments": len(local_s1_segments) + len(local_s2_segments),
+                "language_hits": language_hits,
+            }
+
+        selected_stream = _pick_stream_by_index(config.preferred_stream_index)
+        selected_s1_channel = config.s1_channel
+        selected_s2_channel = config.s2_channel
+
+        if config.enable_channel_prescan and int(selected_stream.get("channels") or 1) > 1:
+            logger.add_warning("Fast channel prescan is enabled.")
+            prescan_duration = min(process_duration_sec, float(config.prescan_duration_sec))
+            prescan_candidates = [
+                _transcribe_from_mapping(
+                    stream=selected_stream,
+                    s1_channel=config.s1_channel,
+                    s2_channel=config.s2_channel,
+                    duration_sec=prescan_duration,
+                    suffix="_prescan_default",
+                ),
+                _transcribe_from_mapping(
+                    stream=selected_stream,
+                    s1_channel=config.s2_channel,
+                    s2_channel=config.s1_channel,
+                    duration_sec=prescan_duration,
+                    suffix="_prescan_swap",
+                ),
+            ]
+            prescan_candidates.sort(
+                key=lambda c: (c["language_hits"], c["total_segments"]),
+                reverse=True,
+            )
+            best_prescan = prescan_candidates[0]
+            mapping_text = str(best_prescan["mapping"])
+            if "S1=FR" in mapping_text:
+                selected_s1_channel, selected_s2_channel = "FR", "FL"
+            else:
+                selected_s1_channel, selected_s2_channel = "FL", "FR"
+
+            logger.log_stage(
+                "prescan",
+                "completed",
+                details={
+                    "stream_index": best_prescan["stream_index"],
+                    "selected_mapping": f"S1={selected_s1_channel},S2={selected_s2_channel}",
+                    "duration_sec": prescan_duration,
+                    "language_hits": best_prescan["language_hits"],
+                    "total_segments": best_prescan["total_segments"],
+                },
+            )
+
+        best = _transcribe_from_mapping(
+            stream=selected_stream,
+            s1_channel=selected_s1_channel,
+            s2_channel=selected_s2_channel,
+            duration_sec=process_duration_sec,
+            suffix="",
+        )
+
+        stream_index = best["stream_index"]
+        channels = best["channels"]
+        s1_file = best["s1_file"]
+        s2_file = best["s2_file"]
+        s2_enabled = best["s2_enabled"]
+        s1_segments = best["s1_segments"]
+        s2_segments = best["s2_segments"]
+        s1_lang = best["s1_lang"]
+        s2_lang = best["s2_lang"]
+
+        if channels <= 1:
+            logger.add_warning("Mono audio detected: processing as single speaker S1.")
+        if channels > 2:
+            logger.add_warning(
+                "Multi-channel audio detected: using configured channels from selected stream."
+            )
+
+        logger.log_stage(
+            "extract_audio",
+            "completed",
+            duration_sec=best["extract_duration"],
+            details={
+                "stream_index": stream_index,
+                "channels": channels,
+                "mapping": best["mapping"],
+                "s1_file": str(s1_file),
+                "s2_file": str(s2_file) if s2_enabled else None,
+            },
+        )
+
+        if s1_lang and s1_lang not in {"ru", "uk"}:
+            logger.add_warning(f"S1 detected language is '{s1_lang}', expected ru/uk.")
+        logger.log_stage(
+            "transcribe_s1",
+            "completed",
+            duration_sec=best["transcribe_s1_duration"],
+            details={
+                "segments": len(s1_segments),
+                "detected_language": s1_lang,
+            },
+        )
+
+        if s2_enabled:
             if s2_lang and s2_lang not in {"ru", "uk"}:
                 logger.add_warning(f"S2 detected language is '{s2_lang}', expected ru/uk.")
             logger.log_stage(
                 "transcribe_s2",
                 "completed",
-                duration_sec=time.perf_counter() - t2,
+                duration_sec=best["transcribe_s2_duration"],
                 details={
                     "segments": len(s2_segments),
                     "detected_language": s2_lang,
@@ -211,10 +331,6 @@ def main() -> int:
             )
             if len(s2_segments) == 0:
                 logger.add_warning("S2 produced zero segments.")
-            elif len(s1_segments) > 0 and len(s2_segments) / len(s1_segments) < 0.2:
-                logger.add_warning(
-                    "S2 segment count is much lower than S1; check channel mapping or audio balance."
-                )
 
         dialog = dialog_builder.merge(s1_segments, s2_segments, global_offset_sec=0.0)
         logger.log_stage("merge_dialog", "completed", details={"lines": len(dialog)})
