@@ -1,0 +1,15 @@
+[Unit]
+Description=V2T Decoder transcription pipeline
+After=network.target
+
+[Service]
+Type=simple
+User=brgm
+WorkingDirectory=/home/brgm/v2t-decoder-project/v2t-decoder
+Environment=CONFIG_FILE=config.yaml
+ExecStart=/usr/bin/env bash /home/brgm/v2t-decoder-project/v2t-decoder/scripts/run_v2t.sh /home/brgm/v2t-decoder-project/v2t-decoder/${CONFIG_FILE}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
