@@ -24,8 +24,13 @@ def get_engine() -> Any:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    _ = get_engine()
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    _ = get_engine()
+    return {"status": "ready"}
 
 
 @app.get("/metrics")
