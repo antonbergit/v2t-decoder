@@ -407,8 +407,8 @@ def main() -> int:
             details={"lines": len(dialog), "chunks": len(chunks)},
         )
 
-        txt_file = output_dir / "dialog_timeline.txt"
-        srt_file = output_dir / "dialog_timeline.srt"
+        txt_file = config.video_file.with_suffix(".txt")
+        srt_file = config.video_file.with_suffix(".srt")
         dialog_builder.save_txt(dialog, txt_file)
         dialog_builder.save_srt(dialog, srt_file)
 

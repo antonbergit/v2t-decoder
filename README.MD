@@ -23,9 +23,9 @@
   - `demo` — обработка первых N секунд
   - `production` — обработка по временным чанкам
 - Выходные файлы:
-  - `dialog_timeline.txt`
-  - `dialog_timeline.srt`
-  - `processing.log.json` (машиночитаемый лог)
+  - `<имя_видео>.txt` (рядом с видеофайлом)
+  - `<имя_видео>.srt` (рядом с видеофайлом)
+  - `processing.log.json` (машиночитаемый лог, в `output_dir`)
 
 ---
 
