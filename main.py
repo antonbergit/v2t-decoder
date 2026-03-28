@@ -65,10 +65,11 @@ def main() -> int:
 
     try:
         config = load_config(args.config)
+        log_file = config.video_file.with_suffix(".processing.log.json")
 
         output_dir = config.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger = ProcessingLogger(output_dir / "processing.log.json")
+        logger = ProcessingLogger(log_file)
         logger.log_stage("config_load", "completed")
 
         _validate_video_file(config.video_file)
@@ -416,6 +417,7 @@ def main() -> int:
             {
                 "txt_file": str(txt_file),
                 "srt_file": str(srt_file),
+                "log_file": str(log_file),
                 "audio_dir": str(audio_dir),
             }
         )
@@ -426,7 +428,7 @@ def main() -> int:
         print("✅ COMPLETED")
         print(f"TXT: {txt_file}")
         print(f"SRT: {srt_file}")
-        print(f"LOG: {output_dir / 'processing.log.json'}")
+        print(f"LOG: {log_file}")
         return 0
 
     except (ConfigError, FileNotFoundError, UnsupportedFormatError, NoAudioError, V2TError) as exc:
