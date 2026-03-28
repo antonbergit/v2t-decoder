@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .env
 models/
+*.mkv
+*.mp3
+*.mp4
+test-example/
