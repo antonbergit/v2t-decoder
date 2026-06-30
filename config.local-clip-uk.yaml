@@ -1,0 +1,23 @@
+video_file: ../uploaded/local_clip_1339_2958.mp4
+output_dir: ./output_local_clip_1339_2958
+mode: production
+
+fragment_size_min: 8
+max_video_duration_sec: 2000
+
+whisper_model: medium
+device: auto
+language: uk
+initial_prompt: "Ukrainian speech. Do not translate. Transcribe verbatim."
+beam_size: 5
+vad_filter: true
+
+preferred_stream_index: 0
+s1_channel: FL
+s2_channel: FR
+
+enable_channel_prescan: false
+prescan_duration_sec: 8
+
+audio_bitrate: 128k
+min_text_len: 2
